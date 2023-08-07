@@ -1,14 +1,6 @@
-import http from 'http';
-const fetch = async (url, options) => {
-  const res = await fetch(url, options);
-  const newRes = new Response(res.body, res);
-  newRes.headers.set('Access-Control-Allow-Origin', options.headers.get('Origin'));
-  newRes.headers.set('Access-Control-Allow-Methods', 'GET,HEAD,POST,OPTIONS');
-  newRes.headers.set('Access-Control-Allow-Credentials', 'true');
-  newRes.headers.set('Access-Control-Allow-Headers', '*');
-  return newRes;
-};
+import { serve } from "https://deno.land/std/http/server.ts";
 
+// 同查找 _U 一样, 查找 KievRPSSecAuth、_RwBf 的值并替换下方的xxx
 const KievRPSSecAuth = 'xxx';
 const _RwBf = 'xxx';
 const SYDNEY_ORIGIN = 'https://sydney.bing.com';
@@ -41,8 +33,19 @@ const IP_RANGE = [
   ['3.128.0.0', '3.247.255.255'], //7,864,320
 ];
 
+/**
+ * 随机整数 [min,max)
+ * @param {number} min
+ * @param {number} max
+ * @returns
+ */
 const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min)) + min;
 
+/**
+ * ip 转 int
+ * @param {string} ip
+ * @returns
+ */
 const ipToInt = (ip) => {
   const ipArr = ip.split('.');
   let result = 0;
@@ -53,6 +56,11 @@ const ipToInt = (ip) => {
   return result;
 };
 
+/**
+ * int 转 ip
+ * @param {number} intIP
+ * @returns
+ */
 const intToIp = (intIP) => {
   return `${(intIP >> 24) & 255}.${(intIP >> 16) & 255}.${(intIP >> 8) & 255}.${intIP & 255}`;
 };
@@ -68,6 +76,11 @@ const getRandomIP = () => {
   return randomIP;
 };
 
+/**
+ * home
+ * @param {string} pathname
+ * @returns
+ */
 const home = async (pathname) => {
   const baseUrl = 'https://raw.githubusercontent.com/Harry-zklcdc/go-proxy-bingai/master/';
   let url;
@@ -93,18 +106,18 @@ const home = async (pathname) => {
   return newRes;
 };
 
-const server = http.createServer(async (req, res) => {
-  const currentUrl = new URL(req.url, `http://${req.headers.host}`);
+const server = serve({ port: 8000 });
+
+console.log("Listening on http://localhost:8000/");
+
+for await (const request of server) {
+  const currentUrl = new URL(request.url);
+  // if (currentUrl.pathname === '/' || currentUrl.pathname.startsWith('/github/')) {
   if (currentUrl.pathname === '/' || currentUrl.pathname.indexOf('/web/') === 0) {
-    const homeRes = await home(currentUrl.pathname);
-    res.writeHead(homeRes.status, homeRes.headers);
-    homeRes.body.pipe(res);
-    return;
+    request.respond(await home(currentUrl.pathname));
   }
   if (currentUrl.pathname === '/sysconf') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end('{"code":200,"message":"success","data":{"isSysCK":false,"isAuth":true}}');
-    return;
+    request.respond(new Response('{"code":200,"message":"success","data":{"isSysCK":false,"isAuth":true}}'));
   }
   let targetUrl;
   if (currentUrl.pathname.includes('/sydney')) {
@@ -114,7 +127,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   const newHeaders = new Headers();
-  req.headers.forEach((value, key) => {
+  request.headers.forEach((value, key) => {
+    // console.log(`old : ${key} : ${value}`);
     if (KEEP_REQ_HEADERS.includes(key)) {
       newHeaders.set(key, value);
     }
@@ -123,17 +137,18 @@ const server = http.createServer(async (req, res) => {
   newHeaders.set('origin', targetUrl.origin);
   newHeaders.set('referer', 'https://www.bing.com/search?q=Bing+AI');
   const randIP = getRandomIP();
+  // console.log('randIP : ', randIP);
   newHeaders.set('X-Forwarded-For', randIP);
-  const cookie = req.headers.get('Cookie') || '';
+  const cookie = request.headers.get('Cookie') || '';
   let cookies = cookie;
   if (!cookie.includes('KievRPSSecAuth=')) {
-    cookies += '; KievRPSSecAuth=' + KievRPSSecAuth 
+     cookies += '; KievRPSSecAuth=' + KievRPSSecAuth 
   }
   if (!cookie.includes('_RwBf=')) {
     cookies += '; _RwBf=' + _RwBf
   }
   newHeaders.set('Cookie', cookies);
-  const oldUA = req.headers.get('user-agent');
+  const oldUA = request.headers.get('user-agent');
   const isMobile = oldUA.includes('Mobile') || oldUA.includes('Android');
   if (isMobile) {
     newHeaders.set(
@@ -144,21 +159,18 @@ const server = http.createServer(async (req, res) => {
     newHeaders.set('user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.35');
   }
 
+  // newHeaders.forEach((value, key) => console.log(`${key} : ${value}`));
   const newReq = new Request(targetUrl, {
-    method: req.method,
+    method: request.method,
     headers: newHeaders,
-    body: req.body,
+    body: request.body,
   });
-  const fetchRes = await fetch(newReq);
-  const newRes = new Response(fetchRes.body, fetchRes);
-  newRes.headers.set('Access-Control-Allow-Origin', req.headers.get('Origin'));
+  // console.log('request url : ', newReq.url);
+  const res = await fetch(newReq);
+  const newRes = new Response(res.body, res);
+  newRes.headers.set('Access-Control-Allow-Origin', request.headers.get('Origin'));
   newRes.headers.set('Access-Control-Allow-Methods', 'GET,HEAD,POST,OPTIONS');
   newRes.headers.set('Access-Control-Allow-Credentials', 'true');
   newRes.headers.set('Access-Control-Allow-Headers', '*');
-  res.writeHead(newRes.status, newRes.headers);
-  newRes.body.pipe(res);
-});
-
-server.listen(8080, () => {
-  console.log('Server listening on port 8080');
-});
+  request.respond(newRes);
+}
