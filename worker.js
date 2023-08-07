@@ -106,71 +106,68 @@ const home = async (pathname) => {
   return newRes;
 };
 
-const server = serve({ port: 8000 });
+const server = Deno.listen({ port: 8000 });
 
 console.log("Listening on http://localhost:8000/");
 
-for await (const request of server) {
-  const currentUrl = new URL(request.url);
-  // if (currentUrl.pathname === '/' || currentUrl.pathname.startsWith('/github/')) {
-  if (currentUrl.pathname === '/' || currentUrl.pathname.indexOf('/web/') === 0) {
-    request.respond(await home(currentUrl.pathname));
-  }
-  if (currentUrl.pathname === '/sysconf') {
-    request.respond(new Response('{"code":200,"message":"success","data":{"isSysCK":false,"isAuth":true}}'));
-  }
-  let targetUrl;
-  if (currentUrl.pathname.includes('/sydney')) {
-    targetUrl = new URL(SYDNEY_ORIGIN + currentUrl.pathname + currentUrl.search);
-  } else {
-    targetUrl = new URL(BING_ORIGIN + currentUrl.pathname + currentUrl.search);
-  }
+for await (const conn of server) {
+  handleConnection(conn);
+}
 
-  const newHeaders = new Headers();
-  request.headers.forEach((value, key) => {
-    // console.log(`old : ${key} : ${value}`);
-    if (KEEP_REQ_HEADERS.includes(key)) {
-      newHeaders.set(key, value);
+async function handleConnection(conn) {
+  const httpConn = Deno.serveHttp(conn);
+  for await (const requestEvent of httpConn) {
+    const currentUrl = new URL(requestEvent.request.url);
+    // if (currentUrl.pathname === '/' || currentUrl.pathname.startsWith('/github/')) {
+    if (currentUrl.pathname === '/' || currentUrl.pathname.indexOf('/web/') === 0) {
+      requestEvent.respondWith(await home(currentUrl.pathname));
     }
-  });
-  newHeaders.set('host', targetUrl.host);
-  newHeaders.set('origin', targetUrl.origin);
-  newHeaders.set('referer', 'https://www.bing.com/search?q=Bing+AI');
-  const randIP = getRandomIP();
-  // console.log('randIP : ', randIP);
-  newHeaders.set('X-Forwarded-For', randIP);
-  const cookie = request.headers.get('Cookie') || '';
-  let cookies = cookie;
-  if (!cookie.includes('KievRPSSecAuth=')) {
-     cookies += '; KievRPSSecAuth=' + KievRPSSecAuth 
-  }
-  if (!cookie.includes('_RwBf=')) {
-    cookies += '; _RwBf=' + _RwBf
-  }
-  newHeaders.set('Cookie', cookies);
-  const oldUA = request.headers.get('user-agent');
-  const isMobile = oldUA.includes('Mobile') || oldUA.includes('Android');
-  if (isMobile) {
-    newHeaders.set(
-      'user-agent',
-      'Mozilla/5.0 (iPhone; CPU iPhone OS 15_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.7 Mobile/15E148 Safari/605.1.15 BingSapphire/1.0.410427012'
-    );
-  } else {
-    newHeaders.set('user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.35');
-  }
+    if (currentUrl.pathname === '/sysconf') {
+      requestEvent.respondWith(new Response('{"code":200,"message":"success","data":{"isSysCK":false,"isAuth":true}}'));
+    }
+    let targetUrl;
+    if (currentUrl.pathname.includes('/sydney')) {
+      targetUrl = new URL(SYDNEY_ORIGIN + currentUrl.pathname + currentUrl.search);
+    } else {
+      targetUrl = new URL(BING_ORIGIN + currentUrl.pathname + currentUrl.search);
+    }
 
-  // newHeaders.forEach((value, key) => console.log(`${key} : ${value}`));
-  const newReq = new Request(targetUrl, {
-    method: request.method,
-    headers: newHeaders,
-    body: request.body,
-  });
-  // console.log('request url : ', newReq.url);
-  const res = await fetch(newReq);
-  const newRes = new Response(res.body, res);
-  newRes.headers.set('Access-Control-Allow-Origin', request.headers.get('Origin'));
-  newRes.headers.set('Access-Control-Allow-Methods', 'GET,HEAD,POST,OPTIONS');
-  newRes.headers.set('Access-Control-Allow-Credentials', 'true');
-  newRes.headers.set('Access-Control-Allow-Headers', '*');
-  request.respond(newRes);
+    const newHeaders = new Headers();
+    requestEvent.request.headers.forEach((value, key) => {
+      // console.log(`old : ${key} : ${value}`);
+      if (KEEP_REQ_HEADERS.includes(key)) {
+        newHeaders.set(key, value);
+      }
+    });
+    newHeaders.set('host', targetUrl.host);
+    newHeaders.set('origin', targetUrl.origin);
+    newHeaders.set('referer', 'https://www.bing.com/search?q=Bing+AI');
+
+    const response = await fetch(targetUrl, {
+      method: requestEvent.request.method,
+      headers: newHeaders,
+      body: requestEvent.request.body,
+    });
+
+    const newRes = new Response(response.body, response);
+    newRes.headers.set('access-control-allow-origin', '*');
+    newRes.headers.set('access-control-allow-headers', '*');
+    newRes.headers.set('access-control-allow-methods', '*');
+    newRes.headers.set('access-control-expose-headers', '*');
+    newRes.headers.set('access-control-max-age', '86400');
+    newRes.headers.set('content-security-policy', "default-src 'none'; img-src https: data:; script-src 'unsafe-inline' 'unsafe-eval' https: data: blob:; style-src 'unsafe-inline' https: data:; font-src https: data:");
+    if (pathname.endsWith('.js')) {
+      newRes.headers.set('content-type', 'application/javascript');
+    } else if (pathname.endsWith('.css')) {
+      newRes.headers.set('content-type', 'text/css');
+    } else if (pathname.endsWith('.svg')) {
+      newRes.headers.set('content-type', 'image/svg+xml');
+    } else if (pathname.endsWith('.ico') || pathname.endsWith('.png')) {
+      newRes.headers.set('content-type', 'image/png');
+    } else {
+      newRes.headers.set('content-type', 'text/html; charset=utf-8');
+    }
+    newRes.headers.delete('content-security-policy');
+    requestEvent.respondWith(newRes);
+  }
 }
