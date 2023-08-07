@@ -89,7 +89,7 @@ const home = async (pathname) => {
   } else {
     url = baseUrl + 'web/index.html';
   }
-  const res = await fetch(url);
+  const res = await fetch(url,{mode: "ipv4"});
   const newRes = new Response(res.body, res);
   if (pathname.endsWith('.js')) {
     newRes.headers.set('content-type', 'application/javascript');
@@ -147,6 +147,7 @@ async function handleConnection(conn) {
       method: requestEvent.request.method,
       headers: newHeaders,
       body: requestEvent.request.body,
+      mode: "ipv4",
     });
 
     const newRes = new Response(response.body, response);
