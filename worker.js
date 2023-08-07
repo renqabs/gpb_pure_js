@@ -1,5 +1,13 @@
 import http from 'http';
-import fetch from 'node-fetch';
+const fetch = async (url, options) => {
+  const res = await fetch(url, options);
+  const newRes = new Response(res.body, res);
+  newRes.headers.set('Access-Control-Allow-Origin', options.headers.get('Origin'));
+  newRes.headers.set('Access-Control-Allow-Methods', 'GET,HEAD,POST,OPTIONS');
+  newRes.headers.set('Access-Control-Allow-Credentials', 'true');
+  newRes.headers.set('Access-Control-Allow-Headers', '*');
+  return newRes;
+};
 
 const KievRPSSecAuth = 'xxx';
 const _RwBf = 'xxx';
