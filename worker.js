@@ -82,12 +82,12 @@ const getRandomIP = () => {
  * @returns
  */
 const home = async (pathname) => {
-  const baseUrl = 'https://raw.githubusercontent.com/your-username/your-repo-name/master/';
+  const baseUrl = 'https://raw.githubusercontent.com/Harry-zklcdc/go-proxy-bingai/master/';
   let url;
   if (pathname.indexOf('/web/') === 0) {
-    url = new URL(pathname.replace('/web/', 'web/'), baseUrl);
+    url = pathname.replace('/web/', baseUrl+'web/');
   } else {
-    url = new URL('web/index.html', baseUrl);
+    url = baseUrl + 'web/index.html';
   }
   const res = await fetch(url);
   const newRes = new Response(res.body, res);
